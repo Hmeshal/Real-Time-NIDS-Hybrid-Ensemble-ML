@@ -1,0 +1,14 @@
+Dataset/
+Raw Dataset/
+Raw Merged-Dataset/
+
+.vscode/
+.venv/
+
+Models/*_pipeline.pkl
+Models/Xtrain.pkl
+Models/Xtest.pkl
+Models/ytrain.pkl
+Models/ytest.pkl
+Models/alerts.json
+Models/live.log

