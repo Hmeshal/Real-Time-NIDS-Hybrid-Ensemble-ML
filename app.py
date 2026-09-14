@@ -1,10 +1,13 @@
+#app.py - flask dashboard
 from flask import Flask,render_template_string,request,jsonify
 import pandas as pd,json,os
+
 MD="./Models"
 C=["#4da3ff","#3ecf6f","#ff5c5c","#f0b429","#a78bfa","#8b98a1"]
 ROW={"PortScan":"#1d3a52","DoS":"#4a2626","DDoS":"#4a2626","BruteForce":"#4a3d1d","Web Attack":"#37294a","Bot":"#23402c","Infiltration":"#4a3123"}
 BDG={"PortScan":"#2d5a8f","DoS":"#8f2d2d","DDoS":"#8f2d2d","BruteForce":"#8f6d2d","Web Attack":"#5a2d8f","Bot":"#2d6b3a","Infiltration":"#8f4a1f"}
 app=Flask(__name__)
+
 TPL="""<!doctype html><html data-bs-theme="dark"><head><meta charset="utf-8">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -23,10 +26,10 @@ pre{background:#16181a;border:1px solid #3a3d42;border-radius:4px;padding:10px;f
 <a href="/" class="{{'on' if p=='m' else ''}}">Models</a>
 <a href="/compare" class="{{'on' if p=='c' else ''}}">Compare</a>
 <a href="/help" class="{{'on' if p=='h' else ''}}">Runbook</a></div>
-<main>{{b|safe}}</main>
-</body></html>"""
+<main>{{b|safe}}</main></body></html>"""
 
 def chip(n): return f"<span style='background:{BDG.get(n,'#3a3d42')};color:#fff;padding:2px 8px;border-radius:3px;font-weight:600;font-size:12px'>{n}</span>"
+
 def chart(cid,labels,ds,ymax=None,legend=False,typ="bar"):
     if typ=="doughnut" and ds and "data" in ds[0]:
         total=sum(ds[0]["data"])
@@ -54,49 +57,43 @@ def alerts():
     q=request.args.get("q","")
     rows=[r for r in allr if q.lower() in (r["attack"]+r["src"]+r["dst"]).lower()] if q else allr
     b="<h1 class='text-center'>Live Alerts</h1>"
-    b+=f"<div class='text-center mb-3'><form action='/alerts' class='d-inline-block'><div class='input-group' style='width:560px;'><input class='form-control' name='q' value='{q}' placeholder='filter' style='{'background:#274d27' if q else ''}'><button class='btn btn-secondary'>Apply</button></div></form> <a class='btn btn-outline-danger ms-2' href='/clear'>Clear Logs</a></div>"
-    
+    b+=f"<div class='text-center mb-3'><form action='/alerts' class='d-inline-block'><div class='input-group' style='width:560px;'><input class='form-control' name='q' value='{q}' placeholder='filter'><button class='btn btn-secondary'>Apply</button></div></form> <a class='btn btn-outline-danger ms-2' href='/clear'>Clear Logs</a></div>"
     ty=pd.Series([r["attack"] for r in rows]).value_counts() if rows else pd.Series(dtype=int)
     mins=pd.Series([r["t"][:5] for r in rows]).value_counts().sort_index() if rows else pd.Series(dtype=int)
-    
-    pie_ds = [{'data':[int(x) for x in ty.values],'backgroundColor':[BDG.get(l,'#3a3d42') for l in ty.index]}]
+    pie_ds=[{'data':[int(x) for x in ty.values],'backgroundColor':[BDG.get(l,'#3a3d42') for l in ty.index]}]
     b+=f"<div class='row'><div class='col-lg-6'>{chart('c0',ty.index,pie_ds,legend=True,typ='doughnut')}</div>"
     b+=f"<div class='col-lg-6'>{chart('c1',mins.index,[{'label':'alerts','data':[int(x) for x in mins.values],'backgroundColor':'#ff5c5c'}])}</div></div>"
-    
     b+="<table id='alert-table'><tr><th>No.</th><th>Time</th><th>Source</th><th>Target</th><th>Attack</th></tr>"
     if rows:
         for n,r in enumerate(rows[-100:][::-1],1):
             b+=f"<tr style='background:{ROW.get(r['attack'],'#26292d')}'><td>{n}</td><td>{r['t']}</td><td>{r['src']}</td><td>{r['dst']}</td><td>{chip(r['attack'])}</td></tr>"
     else: b+="<tr><td colspan='5' class='text-center text-secondary py-4'>Waiting for attacks...</td></tr>"
     b+="</table>"
-    
     try: log_txt="\n".join(open(MD+"/live.log",errors="ignore").read().splitlines()[-20:])
     except: log_txt="Sniffer not running."
     b+=f"<h1 class='text-center'>Sniffer Console</h1><pre id='console-pre'>{log_txt}</pre>"
-    
     b+=f"""<script>
-    const ROW={json.dumps(ROW)}; const BDG={json.dumps(BDG)};
+    const ROW={json.dumps(ROW)}; const BDG={json.dumps(BDG)}; const currentFilter='{q}';
     setInterval(()=>{{
         if(document.activeElement.tagName==='INPUT')return;
         fetch('/api/alerts').then(r=>r.json()).then(data=>{{
+            if(currentFilter){{const qf=currentFilter.toLowerCase();data=data.filter(r=>(r["attack"]+r["src"]+r["dst"]).toLowerCase().includes(qf));}}
             const t=document.getElementById('alert-table');
             if(t){{let h='<tr><th>No.</th><th>Time</th><th>Source</th><th>Target</th><th>Attack</th></tr>';
             for(let i=data.length-1;i>=0;i--){{const r=data[i];
             h+=`<tr style="background:${{ROW[r.attack]||'#26292d'}}"><td>${{data.length-i}}</td><td>${{r.t}}</td><td>${{r.src}}</td><td>${{r.dst}}</td><td><span style="background:${{BDG[r.attack]||'#3a3d42'}};color:#fff;padding:2px 8px;border-radius:3px;font-weight:600;font-size:12px">${{r.attack}}</span></td></tr>`;}}
             t.innerHTML=h;}}
-            let ty={{}}, mins={{}};
-            data.forEach(r=>{{ty[r.attack]=(ty[r.attack]||0)+1; let t=r.t.substring(0,5); mins[t]=(mins[t]||0)+1;}});
+            let ty={{}},mins={{}};
+            data.forEach(r=>{{ty[r.attack]=(ty[r.attack]||0)+1;let t=r.t.substring(0,5);mins[t]=(mins[t]||0)+1;}});
             let total=Object.values(ty).reduce((a,b)=>a+b,0);
             let pLabels=Object.keys(ty).map(l=>`${{l}} (${{Math.round(ty[l]/total*1000)/10}}%)`);
-            let pVals=Object.values(ty);
-            let pColors=Object.keys(ty).map(l=>BDG[l]||'#3a3d42');
+            let pVals=Object.values(ty);let pColors=Object.keys(ty).map(l=>BDG[l]||'#3a3d42');
             if(window.c0){{window.c0.data.labels=pLabels;window.c0.data.datasets[0].data=pVals;window.c0.data.datasets[0].backgroundColor=pColors;window.c0.update();}}
-            let mLabels=Object.keys(mins).sort(); let mVals=mLabels.map(k=>mins[k]);
+            let mLabels=Object.keys(mins).sort();let mVals=mLabels.map(k=>mins[k]);
             if(window.c1){{window.c1.data.labels=mLabels;window.c1.data.datasets[0].data=mVals;window.c1.update();}}
         }});
         fetch('/api/logs').then(r=>r.text()).then(txt=>{{const p=document.getElementById('console-pre');if(p)p.innerText=txt;}});
-    }},2000);
-    </script>"""
+    }},2000);</script>"""
     return render_template_string(TPL,b=b,p="a",r=False)
 
 @app.route("/")
@@ -135,8 +132,7 @@ def runbook():
     ("Web Attack","send(IP(dst=T)/TCP(sport=47000+i,dport=80,flags='PA')/Raw(b\"GET /id=1' OR '1'='1\"),count=2)","sqlmap -u \"http://&lt;target&gt;/id=1\" --batch","http.request.uri contains 'OR'"),
     ("Bot","beacon every 2s in a loop","while true; do curl -k https://&lt;target&gt;:443; sleep 2; done","tcp.dstport==443"),
     ("Infiltration","send([IP(dst=T)/TCP(sport=49000,dport=443,flags='PA')/Raw(b'B'*1300) for _ in range(400)])","dd if=/dev/zero bs=1M count=100 | nc &lt;target&gt; 443","tcp.len gt 1000")]
-    for k,p,kali,f in ATT:
-        b+=f"<tr style='background:{ROW.get(k,'#26292d')}'><td>{chip(k)}</td><td>{p}</td><td>{kali}</td><td>{f}</td></tr>"
+    for k,p,kali,f in ATT: b+=f"<tr style='background:{ROW.get(k,'#26292d')}'><td>{chip(k)}</td><td>{p}</td><td>{kali}</td><td>{f}</td></tr>"
     b+="</table>"
     return render_template_string(TPL,b=b,p="h",r=False)
 
