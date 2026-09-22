@@ -1,4 +1,4 @@
-#sniffer.py - live detector, admin required
+#sniffer.py - live detector, run as admin: python sniffer.py [iface]
 import sys,os,time,json,threading,traceback,warnings
 import numpy as np,pandas as pd,joblib
 from scapy.all import sniff,IP,TCP,UDP,IFACES,conf
@@ -7,11 +7,13 @@ warnings.filterwarnings("ignore")
 MD="./Models"; ALERTS=MD+"/alerts.json"; LOGF=MD+"/live.log"
 try:
     pipe=joblib.load(MD+"/Voting_pipeline.pkl"); FEATS=joblib.load(MD+"/feature_names.pkl"); cmap=joblib.load(MD+"/class_mapping.pkl")
-except: print("train first"); exit()
+except:
+    print("train first"); exit()
 
 flows,scans,scan_cd,pkt_count={},{},{},[0]
 next_purge=time.time()+86400
-webc_state,flood_state={},{}  # persistent across flushes
+# persistent across flushes so slow real-tool attacks still accumulate
+webc_state,brute_state,flood_state,beacon_state,beacon_cd={},{},{},{},{}
 
 for _f in (ALERTS,LOGF):
     try:
@@ -37,15 +39,17 @@ def on_packet(p):
         elif p.haslayer(UDP): sp,dp=p[UDP].sport,p[UDP].dport
         a,bg=sorted([(s,sp),(d,dp)]); k=(a[0],a[1],bg[0],bg[1],p[IP].proto)
         f=flows.get(k)
-        if f is None: flows[k]=f={"src":s,"dst":d,"t0":t,"last":0,"fl":[],"bl":[],"iat":[],"flgs":""}
+        if f is None: flows[k]=f={"src":s,"dst":d,"dp":dp,"t0":t,"last":0,"fl":[],"bl":[],"iat":[],"flgs":""}
         if f["last"]: f["iat"].append(t-f["last"])
         f["last"]=t
         (f["fl"] if s==f["src"] else f["bl"]).append(len(p))
         if p.haslayer(TCP):
             f["flgs"]+=str(p[TCP].flags)
+            # initial SYN only, SYN-ACK replies dont count (keeps nmap/hping clean)
             if "S" in str(p[TCP].flags) and "A" not in str(p[TCP].flags):
                 scans.setdefault((s,d),{"t":t,"ports":set()})["ports"].add(dp)
-    except Exception as e: print("ERROR:",e); traceback.print_exc()
+    except Exception as e:
+        print("ERROR:",e); traceback.print_exc()
 
 def feats(f):
     dur=max(f["last"]-f["t0"],1e-6); fl,bl,al=f["fl"],f["bl"],f["fl"]+f["bl"]
@@ -66,39 +70,29 @@ def decide(todo):
     vs=pipe.predict(pd.DataFrame([feats(f) for _,f in todo]).reindex(columns=FEATS))
     labs=[cmap[v] if v else None for v in vs]
     now=time.time()
-    
-    # DDoS candidates -> flood_state
     for i,(k,f) in enumerate(todo):
-        if labs[i] in [None,"DoS"] and len(f["fl"])>=200 and not f["bl"] and f["flgs"].count("S")>=100:
+        fl,bl,g=f["fl"],f["bl"],f["flgs"]; syn=g.count("S")
+        # DoS: one-way flood OR SYN-dominated flood (hping3 to an OPEN port gets SYN-ACKs back)
+        if labs[i] in [None,"DoS"] and len(fl)>=200 and syn>=100 and (not bl or syn>=0.5*len(fl)):
             labs[i]="DoS"
             rec=flood_state.setdefault(f["dst"],{"srcs":set(),"last":0})
             rec["srcs"].add(f["src"]); rec["last"]=now
-    
-    # WebAttack candidates -> webc_state
-    for i,(k,f) in enumerate(todo):
         if labs[i]: continue
-        dp=k[1] if f["dst"]==k[0] else k[3]
-        if dp==80 and len(f["fl"])<=8:
-            key=(f["src"],f["dst"])
-            rec=webc_state.setdefault(key,{"count":0,"last":0})
+        dp=f["dp"]
+        # web: small http flows accumulate over 30s (sqlmap / curl bursts)
+        if dp==80 and len(fl)<=8:
+            rec=webc_state.setdefault((f["src"],f["dst"]),{"count":0,"last":0})
             rec["count"]+=1; rec["last"]=now
-    
-    # BruteForce per-batch
-    sshc={}
-    for i,(k,f) in enumerate(todo):
-        if labs[i]: continue
-        dp=k[1] if f["dst"]==k[0] else k[3]
-        if dp==22 and len(f["fl"])<=15: sshc[(f["src"],f["dst"])]=sshc.get((f["src"],f["dst"]),[])+[i]
-    for _,ix in sshc.items():
-        if len(ix)>=20:
-            for i in ix: labs[i]="BruteForce"
-    
-    # Bot/Infiltration per-flow
-    for i,(k,f) in enumerate(todo):
-        if labs[i]: continue
-        fl,bl=f["fl"],f["bl"]; dur=max(f["last"]-f["t0"],1e-6); _,fsd=ms(fl)
-        if dur>10 and 10<=len(fl)<=80 and fsd<20 and len(set(fl))<=2: labs[i]="Bot"
-        elif sum(fl)>=100000 and len(fl)>100: labs[i]="Infiltration"
+        # brute: small ssh/ftp flows accumulate over 60s (hydra is slower than scapy)
+        elif dp in (22,21) and len(fl)<=15:
+            rec=brute_state.setdefault((f["src"],f["dst"]),{"count":0,"last":0})
+            rec["count"]+=1; rec["last"]=now
+        else:
+            dur=max(f["last"]-f["t0"],1e-6); _,fsd=ms(fl)
+            # bot: one long uniform beacon (netcat style)
+            if dur>10 and 10<=len(fl)<=80 and fsd<20 and len(set(fl))<=2: labs[i]="Bot"
+            # infiltration: big one-way transfer (nc / dd / curl upload)
+            elif sum(fl)>=100000 and len(fl)>100: labs[i]="Infiltration"
     return labs
 
 def flush():
@@ -107,25 +101,41 @@ def flush():
     if todo:
         labs=decide(todo); n=0
         for (k,f),lab in zip(todo,labs):
+            # feed beacon tracker with quiet small flows only
+            if lab is None and len(f["fl"])<=15 and len(f["fl"])+len(f["bl"])<=25:
+                rec=beacon_state.setdefault((f["src"],f["dst"],f["dp"]),{"starts":[],"last":0})
+                rec["starts"].append(f["t0"]); rec["last"]=now
+                if len(rec["starts"])>30: rec["starts"]=rec["starts"][-30:]
             if lab: n+=1; alert({"t":time.strftime("%H:%M:%S"),"src":f["src"],"dst":f["dst"],"attack":lab})
             del flows[k]
         log("%s checked %d flows, %d alert(s)"%(time.strftime("%H:%M:%S"),len(todo),n))
-    
-    # DDoS check - 45s window
+        # cross-flow beacon: regular small connections = curl-style bot
+        for key,rec in list(beacon_state.items()):
+            if now-rec["last"]>20: del beacon_state[key]; continue
+            st=rec["starts"]
+            if len(st)>=10:
+                gaps=[b-a for a,b in zip(st[-10:],st[-9:])]
+                m=float(np.mean(gaps)); sd=float(np.std(gaps)); kd=(key[0],key[1])
+                if 0.5<m<10 and sd/max(m,1e-6)<0.35 and now-beacon_cd.get(kd,0)>60:
+                    beacon_cd[kd]=now
+                    alert({"t":time.strftime("%H:%M:%S"),"src":key[0],"dst":key[1],"attack":"Bot"},"(beacon %.1fs interval)"%m)
+                    del beacon_state[key]
+    # persistent thresholds
     for dst,rec in list(flood_state.items()):
         if now-rec["last"]>45: del flood_state[dst]
         elif len(rec["srcs"])>=3:
             alert({"t":time.strftime("%H:%M:%S"),"src":",".join(sorted(rec["srcs"])),"dst":dst,"attack":"DDoS"})
             del flood_state[dst]
-    
-    # WebAttack check - 30s window
     for key,rec in list(webc_state.items()):
         if now-rec["last"]>30: del webc_state[key]
         elif rec["count"]>=10:
             alert({"t":time.strftime("%H:%M:%S"),"src":key[0],"dst":key[1],"attack":"Web Attack"})
             del webc_state[key]
-    
-    # PortScan
+    for key,rec in list(brute_state.items()):
+        if now-rec["last"]>60: del brute_state[key]
+        elif rec["count"]>=20:
+            alert({"t":time.strftime("%H:%M:%S"),"src":key[0],"dst":key[1],"attack":"BruteForce"})
+            del brute_state[key]
     for kd in list(scans):
         sc=scans[kd]
         if now-sc["t"]<5: continue

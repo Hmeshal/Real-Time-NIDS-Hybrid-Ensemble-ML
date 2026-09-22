@@ -1,0 +1,87 @@
+def mk_smote():
+    # train split ONLY (leak otherwise)
+    return SMOTE(sampling_strategy={3:20000,4:20000,5:20000,7:1000},
+            k_neighbors=5,random_state=SEED)
+def mk_w(y,cap=100.0):
+    # inverse freq, capped
+    cnt = pd.Series(y).value_counts()
+    w = {}
+    for c in cnt.index:
+        w[int(c)] = len(y)/(len(cnt)*cnt[c])
+    med = np.median(list(w.values()))
+    out = {}
+    for c in w:
+        out[c] = float(min(w[c]/med,cap))
+    return out
+    # 900 rounds @0.05 = 2x time, same score
+    xgb_a = dict(n_estimators=500,learning_rate=0.08,min_child_weight=0.5,random_state=SEED,n_jobs=-1,eval_metric="mlogloss")
+    sw = np.sqrt(ytr.map(W).astype(float).values) # sqrt fixed xgb ranking
+    mdl = build_models(W,xgb_a)
+
+
+
+
+
+
+    MD="./Models"; ALERTS=MD+"/alerts.json"; LOGF=MD+"/live.log"
+    try:
+        pipe=joblib.load(MD+"/Voting_pipeline.pkl"); FEATS=joblib.load(MD+"/feature_names.pkl"); cmap=joblib.load(MD+"/class_mapping.pkl")
+    except: print("train first"); exit()
+
+    flows,scans,scan_cd,pkt_count={},{},{},[0]
+    next_purge=time.time()+86400
+    webc_state,flood_state={},{}  # persistent across flushes
+
+    for _f in (ALERTS,LOGF):
+        try:
+            if time.time()-os.path.getmtime(_f)>86400: open(_f,"w").close()
+        except: pass
+
+
+
+
+
+
+
+
+            # Step 1: DDoS candidates -> flood_state
+        for i,(k,f) in enumerate(todo):
+        if labs[i] in [None,"DoS"] and len(f["fl"])>=200 and not f["bl"] and f["flgs"].count("S")>=100:
+            labs[i]="DoS"
+            rec=flood_state.setdefault(f["dst"],{"srcs":set(),"last":0})
+            rec["srcs"].add(f["src"]); rec["last"]=now
+
+              # Step 2: DDoS check - 45s window
+                for dst,rec in list(flood_state.items()):
+                    if now-rec["last"]>45: del flood_state[dst]
+                    elif len(rec["srcs"])>=3:
+                        alert({"t":time.strftime("%H:%M:%S"),"src":",".join(sorted(rec["srcs"])),"dst":dst,"attack":"DDoS"})
+                        del flood_state[dst]
+
+
+
+
+
+
+
+
+           # WebAttack candidates -> webc_state
+            for i,(k,f) in enumerate(todo):
+                if labs[i]: continue
+                dp=k[1] if f["dst"]==k[0] else k[3]
+                if dp==80 and len(f["fl"])<=8:
+                    key=(f["src"],f["dst"])
+                    rec=webc_state.setdefault(key,{"count":0,"last":0})
+                    rec["count"]+=1; rec["last"]=now
+
+                # WebAttack check - 30s window
+                for key,rec in list(webc_state.items()):
+                        if now-rec["last"]>30: del webc_state[key]
+                        elif rec["count"]>=10:
+                            alert({"t":time.strftime("%H:%M:%S"),"src":key[0],"dst":key[1],"attack":"Web Attack"})
+                            del webc_state[key]
+
+
+
+
+           
