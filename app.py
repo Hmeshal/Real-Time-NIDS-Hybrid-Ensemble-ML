@@ -125,13 +125,16 @@ def runbook():
     b+="<div class='box'><b>How to use Kali Linux VM:</b><br>1. Install VirtualBox/VMware and load the Kali Linux ISO.<br>2. Set the VM Network Adapter to <b>Bridged Mode</b> (so it shares your physical network).<br>3. Boot Kali, open the terminal, and run the industry-standard commands listed below against your target IP. The sniffer will detect them exactly as it does the Python scripts.</div>"
     b+="<div class='box'><b>Live Mode (Python):</b> Requires Admin, Npcap, and trained models. Run <code>start_live.bat</code>.<br><b>Kali VM Mode:</b> For industry-standard attacks using Kali Linux. Run <code>start_with_kali.bat</code> to start monitoring and view attack commands.<br><b>Demo Mode:</b> No network needed. Run <code>start_demo.bat</code> to replay a guaranteed capture.</div>"
     b+="<h1 class='text-center'>Attack Reference</h1><table><tr><th>Attack</th><th>Python (Our Method)</th><th>Kali Linux (Industry Standard)</th><th>Wireshark Filter</th></tr>"
-    ATT=[("PortScan","send([IP(dst=T)/TCP(dport=p,flags='S') for p in range(1,600)])","nmap -sS -p 1-600 &lt;target&gt;","tcp.flags.syn==1 and tcp.flags.ack==0"),
-    ("DoS","send([IP(dst=T)/TCP(sport=1234,dport=80,flags='S') for _ in range(3000)])","hping3 -S --flood -p 80 &lt;target&gt;","tcp.flags.syn==1 and tcp.dstport==80"),
-    ("DDoS","5 spoofed sources flooding port 80","hping3 -S --flood -a 10.9.9.1 -p 80 &lt;target&gt;","tcp.flags.syn==1 and ip.src==10.9.9.1"),
-    ("BruteForce","send(IP(dst=T)/TCP(sport=46000+i,dport=22,flags='S')/Raw(b'x'),count=3)","hydra -l root -P pass.txt ssh://&lt;target&gt;","tcp.dstport==22"),
-    ("Web Attack","send(IP(dst=T)/TCP(sport=47000+i,dport=80,flags='PA')/Raw(b\"GET /id=1' OR '1'='1\"),count=2)","sqlmap -u \"http://&lt;target&gt;/id=1\" --batch","http.request.uri contains 'OR'"),
-    ("Bot","beacon every 2s in a loop","while true; do curl -k https://&lt;target&gt;:443; sleep 2; done","tcp.dstport==443"),
-    ("Infiltration","send([IP(dst=T)/TCP(sport=49000,dport=443,flags='PA')/Raw(b'B'*1300) for _ in range(400)])","dd if=/dev/zero bs=1M count=100 | nc &lt;target&gt; 443","tcp.len gt 1000")]
+    ATT=[
+ ("Benign","benign background sessions in demo.pcap","ping -c 5 10.20.20.10<br>curl http://10.20.20.10/<br>ssh 10.20.20.10","icmp or tcp.dstport==80 or tcp.dstport==22"),
+ ("PortScan","send([IP(dst=T)/TCP(dport=p,flags='S') for p in range(1,600)])","nmap 10.20.20.10","tcp.flags.syn==1 and tcp.flags.ack==0"),
+ ("DoS","send([IP(dst=T)/TCP(sport=1234,dport=80,flags='S') for _ in range(3000)])","sudo hping3 --flood -S -p 80 10.20.20.10","tcp.flags.syn==1 and tcp.dstport==80"),
+ ("DDoS","5 spoofed sources flooding port 80","hping3 --flood 10.20.20.10","ip.dst==10.20.20.10"),
+ ("BruteForce","send(IP(dst=T)/TCP(sport=46000+i,dport=22,flags='S')/Raw(b'x'),count=3)","hydra -l admin -P /usr/share/wordlists/rockyou.txt ssh://10.20.20.10","tcp.dstport==22"),
+ ("Web Attack","send(IP(dst=T)/TCP(sport=47000+i,dport=80,flags='PA')/Raw(b\"GET /id=1' OR '1'='1\"),count=2)","nikto -h http://10.20.20.10","tcp.dstport==80"),
+ ("Bot","beacon every 2s in a loop","nc -lvkp 9001<br>sudo hping3 -c 25 -i u500000 -S -p 9001 10.20.20.10","tcp.flags.syn==1 and tcp.dstport==9001"),
+ ("Infiltration","send([IP(dst=T)/TCP(sport=49000,dport=443,flags='PA')/Raw(b'B'*1300) for _ in range(400)])","nc -lvkp 9001 &gt; /dev/null<br>nc -q 1 10.20.20.10 9001 &lt; ~/test-10mb.bin","tcp.dstport==9001"),
+]
     for k,p,kali,f in ATT: b+=f"<tr style='background:{ROW.get(k,'#26292d')}'><td>{chip(k)}</td><td>{p}</td><td>{kali}</td><td>{f}</td></tr>"
     b+="</table>"
     return render_template_string(TPL,b=b,p="h",r=False)
