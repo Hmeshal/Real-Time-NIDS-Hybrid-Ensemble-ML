@@ -5,10 +5,8 @@ ssh 10.20.20.10
 [PortScan]
 nmap 10.20.20.10
 
-
-
 [DOS]
-sudo hping3 --flood -S -p 80 10.20.20.10
+hping3 --flood 10.20.20.10
 
 [DDOS]
 hping3 --flood 10.20.20.10

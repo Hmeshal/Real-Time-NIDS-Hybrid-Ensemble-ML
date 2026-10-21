@@ -128,7 +128,7 @@ def runbook():
     ATT=[
  ("Benign","benign background sessions in demo.pcap","ping -c 5 10.20.20.10<br>curl http://10.20.20.10/<br>ssh 10.20.20.10","icmp or tcp.dstport==80 or tcp.dstport==22"),
  ("PortScan","send([IP(dst=T)/TCP(dport=p,flags='S') for p in range(1,600)])","nmap 10.20.20.10","tcp.flags.syn==1 and tcp.flags.ack==0"),
- ("DoS","send([IP(dst=T)/TCP(sport=1234,dport=80,flags='S') for _ in range(3000)])","sudo hping3 --flood -S -p 80 10.20.20.10","tcp.flags.syn==1 and tcp.dstport==80"),
+ ("DoS","send([IP(dst=T)/TCP(sport=1234,dport=80,flags='S') for _ in range(3000)])","hping3 --flood 10.20.20.10","tcp.flags.syn==1 and tcp.dstport==80"),
  ("DDoS","5 spoofed sources flooding port 80","hping3 --flood 10.20.20.10","ip.dst==10.20.20.10"),
  ("BruteForce","send(IP(dst=T)/TCP(sport=46000+i,dport=22,flags='S')/Raw(b'x'),count=3)","hydra -l admin -P /usr/share/wordlists/rockyou.txt ssh://10.20.20.10","tcp.dstport==22"),
  ("Web Attack","send(IP(dst=T)/TCP(sport=47000+i,dport=80,flags='PA')/Raw(b\"GET /id=1' OR '1'='1\"),count=2)","nikto -h http://10.20.20.10","tcp.dstport==80"),
