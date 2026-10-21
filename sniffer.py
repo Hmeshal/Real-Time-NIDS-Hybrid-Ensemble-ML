@@ -68,7 +68,7 @@ def on_packet(p):
                 fa=flood.get((d,dp))
                 if fa is None or t-fa["last"]>WIN:
                     fa=flood[(d,dp)]={"t":deque(maxlen=DOS*4),"srcs":{},"last":t,"al":0}
-                # >>> THE FIX: only SYN-like packets count toward a flood <<<
+                # THE FIX: only SYN-like packets count toward a flood
                 if synlike: fa["t"].append(t)
                 fa["srcs"][s]=t; fa["last"]=t
                 cut=t-WIN
@@ -120,6 +120,8 @@ def decide(todo):
         if lab not in PRI: lab=None
         if lab in ("DoS","DDoS") and not busy: lab=None
         if lab=="Infiltration": lab=None
+        # Prevent ML from misclassifying SSH brute-force as Web Attack
+        if lab=="Web Attack" and dp not in (80,443,8080): lab=None
         if lab and lab not in ("DoS","DDoS"):
             q=mlv.setdefault((src,dst,lab),deque(maxlen=20)); q.append(t)
             while q and t-q[0]>30: q.popleft()
