@@ -256,8 +256,8 @@ Real-Time-NIDS/
 ## 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Hmeshal/Real-Time-NIDS.git
-cd Real-Time-NIDS
+git clone https://github.com/Hmeshal/Real-Time-NIDS-Hybrid-Ensemble-ML.git
+cd Real-Time-NIDS-Hybrid-Ensemble-ML
 ```
 
 ## 2. Install Dependencies
