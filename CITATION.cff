@@ -1,11 +1,17 @@
-Real-Time-NIDS-Hybrid-ML
-If you use this software, please cite it using the metadata from this file.
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "Real-Time Network Intrusion Detection System Using Hybrid Ensemble Machine Learning"
 version: 1.0.0
-
-team members:
-  
-Meshal Hussain Alossaimi 
-Abdulmajeed Marzouq Alotaibi 
-Abdullah Saad Alkulaib
-Anas Jaber Alasiri 
-Nasser Raed Alsawegh
+repository-code: "https://github.com/Hmeshal/Real-Time-NIDS-Hybrid-Ensemble-ML"
+authors:
+  - family-names: Alossaimi
+    given-names: Meshal Hussain
+  - family-names: Alotaibi
+    given-names: Abdulmajeed Marzouq
+  - family-names: Alkulaib
+    given-names: Abdullah Saad
+  - family-names: Alasiri
+    given-names: Anas Jaber
+  - family-names: Alsawegh
+    given-names: Nasser Raed
