@@ -5,3 +5,6 @@ scapy
 scikit-learn
 joblib
 matplotlib
+lightgbm
+xgboost
+imbalanced-learn
